@@ -10,15 +10,18 @@ app.post(PATH, (req, res) => {
   const method = body.method;
 
   if (method === "initialize") {
-    return res.json({
-      jsonrpc: "2.0",
-      id: body.id ?? null,
-      result: {
-        serverInfo: { name: "mcp-streamable-test", version: "0.1.0" },
-        capabilities: {}
+  return res.json({
+    jsonrpc: "2.0",
+    id: body.id ?? null,
+    result: {
+      protocolVersion: "2024-11-05",
+      serverInfo: { name: "mcp-streamable-test", version: "0.1.0" },
+      capabilities: {
+        tools: {} // advertise tools capability (minimal OK)
       }
-    });
-  }
+    }
+  });
+}
 
   if (method === "tools/list") {
     return res.json({
