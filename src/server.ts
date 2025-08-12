@@ -7,17 +7,24 @@ const PATH = process.env.MCP_ENDPOINT || "/mcp";
 
 app.post(PATH, (req, res) => {
   const body = req.body || {};
-  const method = body.method;
+  const method = body.method as string | undefined;
+  const id = body.id as string | number | undefined;
+
+  // 1) Properly handle MCP notifications (no id): return 204 No Content
+  // Common example: "notifications/initialized"
+  if (id === undefined || id === null) {
+    return res.status(204).end();
+  }
 
   if (method === "initialize") {
     return res.json({
       jsonrpc: "2.0",
-      id: body.id ?? null,
+      id,
       result: {
         protocolVersion: "2024-11-05",
         serverInfo: { name: "mcp-streamable-test", version: "0.1.0" },
         capabilities: {
-          tools: {} // minimal tools capability advertisement
+          tools: {}
         }
       }
     });
@@ -26,7 +33,7 @@ app.post(PATH, (req, res) => {
   if (method === "tools/list") {
     return res.json({
       jsonrpc: "2.0",
-      id: body.id ?? null,
+      id,
       result: {
         tools: [
           {
@@ -45,10 +52,9 @@ app.post(PATH, (req, res) => {
 
   if (method === "tools/call" && body.params?.name === "time") {
     const now = new Date().toISOString();
-    // Return MCP-style content blocks for maximum compatibility
     return res.json({
       jsonrpc: "2.0",
-      id: body.id ?? null,
+      id,
       result: {
         content: [
           {
@@ -60,10 +66,10 @@ app.post(PATH, (req, res) => {
     });
   }
 
-  // Default "method not found"
+  // Unknown method with id present: return JSON-RPC "Method not found"
   return res.status(200).json({
     jsonrpc: "2.0",
-    id: body.id ?? null,
+    id,
     error: { code: -32601, message: "Method not found" }
   });
 });
