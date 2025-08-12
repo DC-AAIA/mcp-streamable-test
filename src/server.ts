@@ -10,18 +10,18 @@ app.post(PATH, (req, res) => {
   const method = body.method;
 
   if (method === "initialize") {
-  return res.json({
-    jsonrpc: "2.0",
-    id: body.id ?? null,
-    result: {
-      protocolVersion: "2024-11-05",
-      serverInfo: { name: "mcp-streamable-test", version: "0.1.0" },
-      capabilities: {
-        tools: {} // advertise tools capability (minimal OK)
+    return res.json({
+      jsonrpc: "2.0",
+      id: body.id ?? null,
+      result: {
+        protocolVersion: "2024-11-05",
+        serverInfo: { name: "mcp-streamable-test", version: "0.1.0" },
+        capabilities: {
+          tools: {} // minimal tools capability advertisement
+        }
       }
-    }
-  });
-}
+    });
+  }
 
   if (method === "tools/list") {
     return res.json({
@@ -31,8 +31,12 @@ app.post(PATH, (req, res) => {
         tools: [
           {
             name: "time",
-            description: "Returns current server time.",
-            inputSchema: { type: "object", properties: {} }
+            description: "Returns current server time (ISO-8601).",
+            inputSchema: {
+              type: "object",
+              properties: {},
+              additionalProperties: false
+            }
           }
         ]
       }
@@ -40,13 +44,23 @@ app.post(PATH, (req, res) => {
   }
 
   if (method === "tools/call" && body.params?.name === "time") {
+    const now = new Date().toISOString();
+    // Return MCP-style content blocks for maximum compatibility
     return res.json({
       jsonrpc: "2.0",
       id: body.id ?? null,
-      result: { content: new Date().toISOString() }
+      result: {
+        content: [
+          {
+            type: "text",
+            text: now
+          }
+        ]
+      }
     });
   }
 
+  // Default "method not found"
   return res.status(200).json({
     jsonrpc: "2.0",
     id: body.id ?? null,
