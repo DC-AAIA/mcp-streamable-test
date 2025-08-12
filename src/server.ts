@@ -11,8 +11,8 @@ app.post(PATH, (req, res) => {
   const id = body.id as string | number | undefined;
 
   // 1) Properly handle MCP notifications (no id): return 204 No Content
-  // Common example: "notifications/initialized"
-  if (id === undefined || id === null) {
+  // Treat anything without a proper string/number id as a notification: return 204 No Content
+  if (id === undefined || id === null || (typeof id !== "string" && typeof id !== "number")) {
     return res.status(204).end();
   }
 
