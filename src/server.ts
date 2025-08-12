@@ -10,9 +10,18 @@ app.post(PATH, (req, res) => {
   const method = body.method as string | undefined;
   const id = body.id as string | number | undefined;
 
-  // 1) Properly handle MCP notifications (no id): return 204 No Content
-  // Treat anything without a proper string/number id as a notification: return 204 No Content
+  // Treat anything without a proper id as a notification: return 204
   if (id === undefined || id === null || (typeof id !== "string" && typeof id !== "number")) {
+    return res.status(204).end();
+  }
+
+  // If method is missing or not a string, also treat as notification
+  if (typeof method !== "string") {
+    return res.status(204).end();
+  }
+
+  // Explicitly ignore MCP notifications
+  if (method.startsWith("notifications/")) {
     return res.status(204).end();
   }
 
@@ -23,9 +32,7 @@ app.post(PATH, (req, res) => {
       result: {
         protocolVersion: "2024-11-05",
         serverInfo: { name: "mcp-streamable-test", version: "0.1.0" },
-        capabilities: {
-          tools: {}
-        }
+        capabilities: { tools: {} }
       }
     });
   }
@@ -39,11 +46,7 @@ app.post(PATH, (req, res) => {
           {
             name: "time",
             description: "Returns current server time (ISO-8601).",
-            inputSchema: {
-              type: "object",
-              properties: {},
-              additionalProperties: false
-            }
+            inputSchema: { type: "object", properties: {}, additionalProperties: false }
           }
         ]
       }
@@ -55,18 +58,11 @@ app.post(PATH, (req, res) => {
     return res.json({
       jsonrpc: "2.0",
       id,
-      result: {
-        content: [
-          {
-            type: "text",
-            text: now
-          }
-        ]
-      }
+      result: { content: [{ type: "text", text: now }] }
     });
   }
 
-  // Unknown method with id present: return JSON-RPC "Method not found"
+  // Unknown request with id present
   return res.status(200).json({
     jsonrpc: "2.0",
     id,
