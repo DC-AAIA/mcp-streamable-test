@@ -4,10 +4,10 @@ const bodyParser = require("body-parser");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Parse JSON bodies
+// Parse JSON globally
 app.use(bodyParser.json());
 
-// Error handler for invalid JSON
+// Invalid JSON handler
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && "body" in err) {
     console.error("Invalid JSON received:", req.body);
@@ -16,7 +16,7 @@ app.use((err, req, res, next) => {
   next();
 });
 
-// Helpers
+// Helpers for JSON-RPC
 function makeResponse(id, result) {
   return { jsonrpc: "2.0", id, result };
 }
@@ -24,16 +24,24 @@ function makeError(id, code, message) {
   return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
-// MCP endpoint
-app.post("/mcp", (req, res) => {
-  const { jsonrpc, id, method, params } = req.body;
+// MCP endpoint with debug logging
+app.post("/mcp", express.json(), (req, res) => {
+  console.log("Raw body:", req.body);
+
+  let { jsonrpc, id, method, params } = req.body;
+
+  console.log("Parsed method:", method);
+
+  if (typeof method !== "string") {
+    return res.json(makeError(id || null, -32601, "Method missing or not a string"));
+  }
 
   if (jsonrpc !== "2.0") {
     return res.json(makeError(id, -32600, "Invalid JSON-RPC version"));
   }
 
-  // list_tools
   if (method === "list_tools") {
+    console.log("Matched: list_tools");
     return res.json(
       makeResponse(id, {
         tools: [
@@ -47,8 +55,8 @@ app.post("/mcp", (req, res) => {
     );
   }
 
-  // call_tool
   if (method === "call_tool") {
+    console.log("Matched: call_tool with params", params);
     if (params?.name === "time") {
       return res.json(
         makeResponse(id, {
@@ -59,16 +67,15 @@ app.post("/mcp", (req, res) => {
     return res.json(makeError(id, -32601, "Unknown tool"));
   }
 
-  // Fallback
   return res.json(makeError(id, -32601, "Method not found"));
 });
 
-// Health route
+// Simple healthcheck
 app.get("/", (req, res) => {
   res.send("MCP Streamable HTTP server is running");
 });
 
-// Start server — must bind to 0.0.0.0 for Railway
+// Start server — Railway requires 0.0.0.0
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`MCP server listening on port ${PORT} at /mcp`);
+  console.log(`mcp-streamable-test listening on ${PORT} at /mcp`);
 });
