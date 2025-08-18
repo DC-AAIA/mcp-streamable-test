@@ -25,6 +25,16 @@ app.post("/mcp", (req, res) => {
     return res.json(makeError(id, -32600, "Invalid JSON-RPC version"));
   }
 
+  if (method === "initialize") {
+    console.log("Matched: initialize");
+    return res.json(
+      makeResponse(id, {
+        protocolVersion: params?.protocolVersion || "2025-06-18",
+        capabilities: {}
+      })
+    );
+  }
+
   if (method === "list_tools") {
     console.log("Matched: list_tools");
     return res.json(
@@ -64,3 +74,6 @@ app.get("/", (req, res) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`mcp-streamable-test listening on ${PORT} at /mcp`);
 });
+
+// Export for test harness compatibility
+module.exports = app;
