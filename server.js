@@ -20,23 +20,22 @@ app.post("/mcp", (req, res) => {
 
   let { jsonrpc, id, method, params } = req.body || {};
 
+  const methodName = String(method || "").trim().toLowerCase();
+
   // Debug logs
   console.log("DEBUG jsonrpc:", jsonrpc);
   console.log("DEBUG id:", id);
   console.log("DEBUG method:", method);
+  console.log("DEBUG normalized methodName:", methodName);
   console.log("DEBUG params:", params);
-
-  console.log("Parsed method:", method);
 
   if (jsonrpc !== "2.0") {
     return res.json(makeError(id, -32600, "Invalid JSON-RPC version"));
   }
 
-  // Normalize method for safety
-  if (method && method.trim().toLowerCase() === "initialize") {
+  if (methodName === "initialize") {
     console.log("Matched: initialize");
     console.log("🔥 Entered initialize handler");
-
     return res.json(
       makeResponse(id, {
         protocolVersion: params?.protocolVersion || "2025-06-18",
@@ -45,10 +44,9 @@ app.post("/mcp", (req, res) => {
     );
   }
 
-  if (method && method.trim().toLowerCase() === "list_tools") {
+  if (methodName === "list_tools") {
     console.log("Matched: list_tools");
     console.log("🔥 Entered list_tools handler");
-
     return res.json(
       makeResponse(id, {
         tools: [
@@ -62,10 +60,9 @@ app.post("/mcp", (req, res) => {
     );
   }
 
-  if (method && method.trim().toLowerCase() === "call_tool") {
+  if (methodName === "call_tool") {
     console.log("Matched: call_tool with params", params);
     console.log("🔥 Entered call_tool handler");
-
     if (params?.name === "time") {
       return res.json(
         makeResponse(id, {
