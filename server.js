@@ -1,5 +1,5 @@
-import express from "express";
-import bodyParser from "body-parser";
+const express = require("express");
+const bodyParser = require("body-parser");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -68,7 +68,7 @@ app.get("/", (req, res) => {
   res.send("MCP Streamable HTTP server is running");
 });
 
-// Start server
-app.listen(PORT, () => {
+// Start server — must bind to 0.0.0.0 for Railway
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`MCP server listening on port ${PORT} at /mcp`);
 });
