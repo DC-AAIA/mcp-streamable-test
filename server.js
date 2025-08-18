@@ -19,6 +19,13 @@ app.post("/mcp", (req, res) => {
   console.log("Raw body:", req.body);
 
   let { jsonrpc, id, method, params } = req.body || {};
+
+  // 🔎 New debug logs
+  console.log("DEBUG jsonrpc:", jsonrpc);
+  console.log("DEBUG id:", id);
+  console.log("DEBUG method:", method);
+  console.log("DEBUG params:", params);
+
   console.log("Parsed method:", method);
 
   if (jsonrpc !== "2.0") {
