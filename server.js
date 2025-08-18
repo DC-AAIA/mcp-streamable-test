@@ -34,6 +34,7 @@ app.post("/mcp", (req, res) => {
 
   if (method === "initialize") {
     console.log("Matched: initialize");
+    console.log("🔥 Entered initialize handler");
     return res.json(
       makeResponse(id, {
         protocolVersion: params?.protocolVersion || "2025-06-18",
