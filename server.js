@@ -3,6 +3,9 @@ const express = require("express");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// 🔥 Marker Log: proves v0.0.7 code is running
+console.log("🔥 v0.0.7 handler active!");
+
 // Parse JSON bodies
 app.use(express.json());
 
@@ -20,7 +23,7 @@ app.post("/mcp", (req, res) => {
 
   let { jsonrpc, id, method, params } = req.body || {};
 
-  // 🔑 FORCE normalization into a primitive string
+  // Force normalization into a primitive string
   const methodName = String(method || "").trim().toLowerCase();
 
   // Debug logs
@@ -30,12 +33,10 @@ app.post("/mcp", (req, res) => {
   console.log("DEBUG normalized methodName:", methodName);
   console.log("DEBUG params:", params);
 
-  // ✅ Validate JSON-RPC version early
   if (jsonrpc !== "2.0") {
     return res.json(makeError(id, -32600, "Invalid JSON-RPC version"));
   }
 
-  // ✅ Handle initialize IMMEDIATELY
   if (methodName === "initialize") {
     console.log("Matched: initialize");
     console.log("🔥 Entered initialize handler");
@@ -47,7 +48,6 @@ app.post("/mcp", (req, res) => {
     );
   }
 
-  // ✅ Handle list_tools
   if (methodName === "list_tools") {
     console.log("Matched: list_tools");
     console.log("🔥 Entered list_tools handler");
@@ -64,7 +64,6 @@ app.post("/mcp", (req, res) => {
     );
   }
 
-  // ✅ Handle call_tool
   if (methodName === "call_tool") {
     console.log("Matched: call_tool with params", params);
     console.log("🔥 Entered call_tool handler");
@@ -78,7 +77,6 @@ app.post("/mcp", (req, res) => {
     return res.json(makeError(id, -32601, "Unknown tool"));
   }
 
-  // ❌ Fallback: method not recognized
   return res.json(makeError(id, -32601, "Method not found"));
 });
 
@@ -92,5 +90,5 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`mcp-streamable-test listening on ${PORT} at /mcp`);
 });
 
-// Export for test harness
+// Export for test harness compatibility
 module.exports = app;
