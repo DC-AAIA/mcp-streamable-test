@@ -20,12 +20,15 @@ app.post("/mcp", (req, res) => {
 
   let { jsonrpc, id, method, params } = req.body || {};
 
-  const methodName = String(method || "").trim().toLowerCase();
+  // Defensive normalization of 'method'
+  const methodName = (typeof method === "string" ? method : String(method ?? ""))
+    .trim()
+    .toLowerCase();
 
   // Debug logs
   console.log("DEBUG jsonrpc:", jsonrpc);
   console.log("DEBUG id:", id);
-  console.log("DEBUG method:", method);
+  console.log("DEBUG raw method:", method);
   console.log("DEBUG normalized methodName:", methodName);
   console.log("DEBUG params:", params);
 
