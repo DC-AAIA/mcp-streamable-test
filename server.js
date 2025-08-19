@@ -1,14 +1,13 @@
 /**
  * mcp-streamable-test server.js
- * Version: v0.0.10
+ * Version: v0.0.11
  *
  * Purpose:
  * - JSON-RPC 2.0 over HTTP for MCP handshake + tools
- * - Includes serverInfo + instructions in initialize (per mcpo needs)
+ * - Includes serverInfo + instructions in initialize (per MCPO needs)
  * - Robust method normalization and detailed debug logs
  * - Accepts both "/mcp" and "/mcp/" (trailing slash tolerated)
- * - EXTRA: Logs request/response bodies for RPC (first 2KB), adds defensive
- *          fallback for malformed method field, and wraps list_tools in try/catch
+ * - Supports both legacy ("list_tools", "call_tool") and spec-style ("tools/list", "tools/call") methods
  *
  * Endpoints:
  *   POST /mcp   (JSON-RPC 2.0)
@@ -25,7 +24,7 @@ const http = require('http');
 const url = require('url');
 
 // ---------- Config ----------
-const VERSION = '0.0.10';
+const VERSION = '0.0.11';
 const SERVER_NAME = 'mcp-streamable-test';
 const PROTOCOL_VERSION = '2025-06-18';
 const PATH_PREFIX = process.env.PATH_PREFIX || '/mcp';
@@ -97,7 +96,6 @@ function logBody(prefix, body) {
 // ---------- JSON-RPC Handlers ----------
 async function handleInitialize(id, params) {
   log('initialize params:', params);
-
   return {
     jsonrpc: '2.0',
     id,
@@ -138,12 +136,7 @@ async function handleListTools(id) {
         },
       },
     ];
-
-    const resp = {
-      jsonrpc: '2.0',
-      id,
-      result: { tools },
-    };
+    const resp = { jsonrpc: '2.0', id, result: { tools } };
     logBody('list_tools response:', resp);
     return resp;
   } catch (e) {
@@ -154,19 +147,15 @@ async function handleListTools(id) {
 
 async function handleCallTool(id, params) {
   log('call_tool params:', params);
-
   const toolName = params && typeof params.name === 'string' ? params.name : '';
   const args = (params && params.arguments) || {};
-
   if (toolName !== 'time') {
     return makeError(id, -32601, `Tool not found: ${toolName}`);
   }
-
   const payload = { now_utc: nowUtcIso() };
   if (typeof args.echo === 'string' && args.echo.length) {
     payload.echo = args.echo;
   }
-
   const resp = {
     jsonrpc: '2.0',
     id,
@@ -203,6 +192,7 @@ async function handleRpc(req, res, body) {
   logBody('RPC params:', params);
 
   try {
+    // initialize
     if (normMethod === 'initialize') {
       log('Matched: initialize');
       const response = await handleInitialize(id, params);
@@ -210,18 +200,29 @@ async function handleRpc(req, res, body) {
       return sendJson(res, 200, response);
     }
 
-    if (normMethod === 'list_tools' || normMethod === 'list-tools') {
+    // list tools (legacy and spec-style)
+    if (
+      normMethod === 'list_tools' ||
+      normMethod === 'list-tools' ||
+      normMethod === 'tools/list'
+    ) {
       log('Matched: list_tools');
       const response = await handleListTools(id);
       return sendJson(res, 200, response);
     }
 
-    if (normMethod === 'call_tool' || normMethod === 'call-tool') {
+    // call tool (legacy and spec-style)
+    if (
+      normMethod === 'call_tool' ||
+      normMethod === 'call-tool' ||
+      normMethod === 'tools/call'
+    ) {
       log('Matched: call_tool');
       const response = await handleCallTool(id, params || {});
       return sendJson(res, 200, response);
     }
 
+    // Defensive fallback for empty method
     if (!rawMethod) {
       log('No method provided; returning -32601 error (defensive fallback)');
       return sendJson(res, 200, makeError(id, -32601, 'Method not found: <empty>'));
@@ -244,6 +245,7 @@ const server = http.createServer((req, res) => {
   const reqPath = normalizePath(parsedUrl.pathname);
   const basePath = normalizePath(PATH_PREFIX);
 
+  // Only accept POST on PATH_PREFIX (with or without trailing slash)
   if (method === 'POST' && reqPath === basePath) {
     let body = '';
     req.on('data', (chunk) => {
@@ -270,6 +272,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Return JSON for non-matching paths to avoid client confusion
   sendJson(res, 404, { error: 'Not Found', path: parsedUrl.pathname });
 });
 
