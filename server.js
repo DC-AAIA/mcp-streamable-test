@@ -1,11 +1,11 @@
 /**
  * mcp-streamable-test server.js
- * Version: v0.0.11
+ * Version: v0.0.12
  *
  * Purpose:
  * - JSON-RPC 2.0 over HTTP for MCP handshake + tools
  * - Includes serverInfo + instructions in initialize (per MCPO needs)
- * - Robust method normalization and detailed debug logs
+ * - Robust method normalization and detailed debug logs (req/resp first 2KB)
  * - Accepts both "/mcp" and "/mcp/" (trailing slash tolerated)
  * - Supports both legacy ("list_tools", "call_tool") and spec-style ("tools/list", "tools/call") methods
  *
@@ -24,7 +24,7 @@ const http = require('http');
 const url = require('url');
 
 // ---------- Config ----------
-const VERSION = '0.0.11';
+const VERSION = '0.0.12';
 const SERVER_NAME = 'mcp-streamable-test';
 const PROTOCOL_VERSION = '2025-06-18';
 const PATH_PREFIX = process.env.PATH_PREFIX || '/mcp';
@@ -47,12 +47,29 @@ function normalizeMethod(m) {
   if (typeof m !== 'string') return '';
   return m
     .normalize('NFKC')
-    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '') // remove zero-width chars
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, '')
     .trim()
     .toLowerCase();
 }
 
+function log(...args) {
+  const ts = new Date().toISOString();
+  console.log(`[${ts}]`, ...args);
+}
+
+function logBody(prefix, objOrStr) {
+  try {
+    const s = typeof objOrStr === 'string' ? objOrStr : JSON.stringify(objOrStr);
+    const snip = s.length > 2048 ? s.slice(0, 2048) + ' ...[truncated]' : s;
+    log(prefix, snip);
+  } catch (e) {
+    log(prefix, '[unprintable]', String(e));
+  }
+}
+
 function sendJson(res, status, obj) {
+  // Always send a single JSON-RPC object body, nothing else
+  logBody('HTTP RESP body:', obj);
   const data = JSON.stringify(obj);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -62,50 +79,27 @@ function sendJson(res, status, obj) {
 }
 
 function makeError(id, code, message, data) {
-  const err = {
-    jsonrpc: '2.0',
-    error: { code, message },
-  };
+  const err = { jsonrpc: '2.0', error: { code, message } };
   if (id !== undefined && id !== null) err.id = id;
   if (data !== undefined) err.error.data = data;
   return err;
 }
 
-function log(...args) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}]`, ...args);
-}
-
-// Normalize a path to tolerate trailing slash (e.g., "/mcp" and "/mcp/")
+// Path normalization to tolerate trailing slash
 function normalizePath(p) {
   if (!p) return '/';
   return p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
 }
 
-// Debug helpers
-function logBody(prefix, body) {
-  try {
-    const s = typeof body === 'string' ? body : JSON.stringify(body);
-    const snip = s.length > 2048 ? s.slice(0, 2048) + ' ...[truncated]' : s;
-    log(prefix, snip);
-  } catch (e) {
-    log(prefix, '[unprintable body]', String(e));
-  }
-}
-
 // ---------- JSON-RPC Handlers ----------
 async function handleInitialize(id, params) {
-  log('initialize params:', params);
   return {
     jsonrpc: '2.0',
     id,
     result: {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      serverInfo: {
-        name: SERVER_NAME,
-        version: VERSION,
-      },
+      serverInfo: { name: SERVER_NAME, version: VERSION },
       instructions: 'Streamable test MCP server for n8n-mcp integration.',
     },
   };
@@ -119,53 +113,37 @@ async function handleListTools(id) {
         description: 'Returns the current UTC time in ISO 8601 format.',
         inputSchema: {
           type: 'object',
-          properties: {
-            echo: { type: 'string' },
-          },
+          properties: { echo: { type: 'string' } },
           required: [],
           additionalProperties: false,
         },
         outputSchema: {
           type: 'object',
-          properties: {
-            now_utc: { type: 'string' },
-            echo: { type: 'string' },
-          },
+          properties: { now_utc: { type: 'string' }, echo: { type: 'string' } },
           required: ['now_utc'],
           additionalProperties: false,
         },
       },
     ];
-    const resp = { jsonrpc: '2.0', id, result: { tools } };
-    logBody('list_tools response:', resp);
-    return resp;
+    return { jsonrpc: '2.0', id, result: { tools } };
   } catch (e) {
-    log('list_tools handler error:', e && e.stack ? e.stack : e);
     return makeError(id, -32603, 'Internal error in list_tools', { message: String(e) });
   }
 }
 
 async function handleCallTool(id, params) {
-  log('call_tool params:', params);
   const toolName = params && typeof params.name === 'string' ? params.name : '';
   const args = (params && params.arguments) || {};
   if (toolName !== 'time') {
     return makeError(id, -32601, `Tool not found: ${toolName}`);
   }
   const payload = { now_utc: nowUtcIso() };
-  if (typeof args.echo === 'string' && args.echo.length) {
-    payload.echo = args.echo;
-  }
-  const resp = {
+  if (typeof args.echo === 'string' && args.echo.length) payload.echo = args.echo;
+  return {
     jsonrpc: '2.0',
     id,
-    result: {
-      content: [{ type: 'text', text: JSON.stringify(payload) }],
-      isError: false,
-    },
+    result: { content: [{ type: 'text', text: JSON.stringify(payload) }], isError: false },
   };
-  logBody('call_tool response:', resp);
-  return resp;
 }
 
 // ---------- Router ----------
@@ -177,7 +155,6 @@ async function handleRpc(req, res, body) {
   }
 
   const { jsonrpc, method, id, params } = parsed;
-
   if (jsonrpc !== '2.0') {
     log('Invalid Request: jsonrpc must be "2.0"', parsed);
     return sendJson(res, 400, makeError(id, -32600, 'Invalid Request: jsonrpc must be "2.0"'));
@@ -186,49 +163,28 @@ async function handleRpc(req, res, body) {
   const rawMethod = typeof method === 'string' ? method : '';
   const normMethod = normalizeMethod(rawMethod);
 
-  log('RPC request id:', id);
+  log('RPC id:', id);
   log('RPC raw method:', rawMethod);
-  log('RPC normalized method:', normMethod);
+  log('RPC norm method:', normMethod);
   logBody('RPC params:', params);
 
   try {
-    // initialize
     if (normMethod === 'initialize') {
-      log('Matched: initialize');
       const response = await handleInitialize(id, params);
-      logBody('initialize response:', response);
       return sendJson(res, 200, response);
     }
-
-    // list tools (legacy and spec-style)
-    if (
-      normMethod === 'list_tools' ||
-      normMethod === 'list-tools' ||
-      normMethod === 'tools/list'
-    ) {
-      log('Matched: list_tools');
+    if (normMethod === 'list_tools' || normMethod === 'list-tools' || normMethod === 'tools/list') {
       const response = await handleListTools(id);
       return sendJson(res, 200, response);
     }
-
-    // call tool (legacy and spec-style)
-    if (
-      normMethod === 'call_tool' ||
-      normMethod === 'call-tool' ||
-      normMethod === 'tools/call'
-    ) {
-      log('Matched: call_tool');
+    if (normMethod === 'call_tool' || normMethod === 'call-tool' || normMethod === 'tools/call') {
       const response = await handleCallTool(id, params || {});
       return sendJson(res, 200, response);
     }
 
-    // Defensive fallback for empty method
     if (!rawMethod) {
-      log('No method provided; returning -32601 error (defensive fallback)');
       return sendJson(res, 200, makeError(id, -32601, 'Method not found: <empty>'));
     }
-
-    log('Method not found:', rawMethod);
     return sendJson(res, 200, makeError(id, -32601, `Method not found: ${rawMethod}`));
   } catch (err) {
     log('Handler error:', err && err.stack ? err.stack : err);
@@ -241,11 +197,9 @@ const server = http.createServer((req, res) => {
   const { method } = req;
   const parsedUrl = url.parse(req.url, true);
 
-  // Normalize incoming path and base path to tolerate trailing slash
   const reqPath = normalizePath(parsedUrl.pathname);
   const basePath = normalizePath(PATH_PREFIX);
 
-  // Only accept POST on PATH_PREFIX (with or without trailing slash)
   if (method === 'POST' && reqPath === basePath) {
     let body = '';
     req.on('data', (chunk) => {
@@ -257,7 +211,7 @@ const server = http.createServer((req, res) => {
     });
     req.on('end', async () => {
       log('HTTP POST', reqPath, 'Content-Type:', req.headers['content-type'] || '<none>');
-      logBody('HTTP POST body:', body);
+      logBody('HTTP REQ body:', body);
       await handleRpc(req, res, body);
     });
     return;
@@ -267,12 +221,12 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, { status: 'ok', name: SERVER_NAME, version: VERSION });
   }
   if (method === 'GET' && reqPath === '/') {
+    const msg = `${SERVER_NAME} v${VERSION} - JSON-RPC at ${PATH_PREFIX}\n`;
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end(`${SERVER_NAME} v${VERSION} - JSON-RPC at ${PATH_PREFIX}\n`);
+    res.end(msg);
     return;
   }
 
-  // Return JSON for non-matching paths to avoid client confusion
   sendJson(res, 404, { error: 'Not Found', path: parsedUrl.pathname });
 });
 
